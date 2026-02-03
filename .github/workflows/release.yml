@@ -120,10 +120,10 @@ jobs:
             ```bash
             # Linux/macOS
             chmod +x cec-tunnel-*
-            ./cec-tunnel-linux-amd64 -s ws://gateway:8080/tunnel -n "my-server" -t tcp:22:10022
+            ./cec-tunnel-linux-amd64 -s ws://gateway:8880/tunnel -n "my-server" -t tcp:22:10022
             
             # Windows
-            cec-tunnel-windows-amd64.exe -s ws://gateway:8080/tunnel -n "my-server" -t tcp:22:10022
+            cec-tunnel-windows-amd64.exe -s ws://gateway:8880/tunnel -n "my-server" -t tcp:22:10022
             ```
           files: |
             artifacts/cec-tunnel-linux-amd64/*

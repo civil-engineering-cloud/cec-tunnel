@@ -12,7 +12,7 @@
 
 ## 下载
 
-从 [Releases](https://github.com/goyiyun/cec-tunnel/releases) 下载对应平台的可执行文件：
+从 [Releases](https://github.com/civil-engineering-cloud/cec-tunnel/releases) 下载对应平台的可执行文件：
 
 | 平台 | 架构 | 文件 |
 |------|------|------|
@@ -28,18 +28,18 @@
 
 ```bash
 # 下载
-curl -LO https://github.com/goyiyun/cec-tunnel/releases/latest/download/cec-tunnel-linux-amd64
+curl -LO https://github.com/civil-engineering-cloud/cec-tunnel/releases/latest/download/cec-tunnel-linux-amd64
 chmod +x cec-tunnel-linux-amd64
 
 # 运行
-./cec-tunnel-linux-amd64 -s ws://gateway.example.com:8080/tunnel -n "my-server" -t tcp:22:10022
+./cec-tunnel-linux-amd64 -s ws://gateway.example.com:8880/tunnel -n "my-server" -t tcp:22:10022
 ```
 
 ### Windows
 
 ```powershell
 # 下载后直接运行
-.\cec-tunnel-windows-amd64.exe -s ws://gateway.example.com:8080/tunnel -n "my-server" -t tcp:22:10022
+.\cec-tunnel-windows-amd64.exe -s ws://gateway.example.com:8880/tunnel -n "my-server" -t tcp:22:10022
 ```
 
 ## 使用方法
@@ -48,7 +48,7 @@ chmod +x cec-tunnel-linux-amd64
 cec-tunnel [OPTIONS]
 
 Options:
-  -s, --server <URL>     Gateway 服务器地址 [默认: ws://localhost:8080/tunnel]
+  -s, --server <URL>     Gateway 服务器地址 [默认: ws://localhost:8880/tunnel]
   -n, --name <NAME>      客户端名称 [默认: tunnel-client]
   -t, --tunnel <CONFIG>  隧道配置，可多次指定
       --token <TOKEN>    认证 Token
@@ -68,7 +68,7 @@ Options:
 
 ```bash
 # 暴露 SSH 服务 (22 -> 10022)
-cec-tunnel -s ws://gateway:8080/tunnel -n "office" -t tcp:22:10022
+cec-tunnel -s ws://gateway:8880/tunnel -n "office" -t tcp:22:10022
 
 # 暴露多个服务
 cec-tunnel -s wss://gateway.example.com/tunnel \
@@ -78,7 +78,7 @@ cec-tunnel -s wss://gateway.example.com/tunnel \
            -t tcp:6379:10379
 
 # 暴露其他机器的服务
-cec-tunnel -s ws://gateway:8080/tunnel -n "proxy" -t tcp:192.168.1.100:22:10022
+cec-tunnel -s ws://gateway:8880/tunnel -n "proxy" -t tcp:192.168.1.100:22:10022
 ```
 
 ## 作为系统服务运行
@@ -94,7 +94,7 @@ After=network.target
 
 [Service]
 Type=simple
-ExecStart=/usr/local/bin/cec-tunnel -s ws://gateway:8080/tunnel -n "my-server" -t tcp:22:10022
+ExecStart=/usr/local/bin/cec-tunnel -s ws://gateway:8880/tunnel -n "my-server" -t tcp:22:10022
 Restart=always
 RestartSec=5
 
@@ -122,7 +122,7 @@ sudo systemctl start cec-tunnel
     <array>
         <string>/usr/local/bin/cec-tunnel</string>
         <string>-s</string>
-        <string>ws://gateway:8080/tunnel</string>
+        <string>ws://gateway:8880/tunnel</string>
         <string>-n</string>
         <string>my-server</string>
         <string>-t</string>

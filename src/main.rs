@@ -29,7 +29,7 @@ CEC Tunnel 是一个轻量级的内网穿透客户端。
 
 示例:
   # 暴露 SSH 服务
-  cec-tunnel -s ws://gateway:8080/tunnel -n "office" -t tcp:22:10022
+  cec-tunnel -s ws://gateway:8880/tunnel -n "office" -t tcp:22:10022
 
   # 暴露多个服务
   cec-tunnel -s wss://gateway.example.com/tunnel \
@@ -40,7 +40,7 @@ CEC Tunnel 是一个轻量级的内网穿透客户端。
 "#)]
 struct Args {
     /// Gateway 服务器地址
-    #[arg(short, long, default_value = "ws://localhost:8080/tunnel")]
+    #[arg(short, long, default_value = "ws://localhost:8880/tunnel")]
     server: String,
 
     /// 客户端名称
@@ -75,7 +75,7 @@ async fn main() -> Result<()> {
 
     if args.tunnel.is_empty() {
         eprintln!("错误: 至少需要指定一个隧道配置 (-t)");
-        eprintln!("示例: cec-tunnel -s ws://gateway:8080/tunnel -t tcp:22:10022");
+        eprintln!("示例: cec-tunnel -s ws://gateway:8880/tunnel -t tcp:22:10022");
         std::process::exit(1);
     }
 
