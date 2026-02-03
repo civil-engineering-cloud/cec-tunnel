@@ -72,48 +72,42 @@ jobs:
           name: cec-tunnel-server-${{ matrix.suffix }}
           path: cec-tunnel-server-${{ matrix.suffix }}${{ runner.os == 'Windows' && '.exe' || '' }}
 
-  build-cross:
+  build-linux-arm64:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        include:
-          - target: aarch64-unknown-linux-gnu
-            suffix: linux-arm64
-
+    
     steps:
       - uses: actions/checkout@v4
       
-      - name: Install Rust
-        uses: actions-rust-lang/setup-rust-toolchain@v1
-        with:
-          toolchain: stable
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
       
-      - name: Install cross
-        run: cargo install cross --git https://github.com/cross-rs/cross
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
       
-      - name: Build with cross
-        run: cross build --release --target ${{ matrix.target }}
-      
-      - name: Package
+      - name: Build in Docker
         run: |
-          cp target/${{ matrix.target }}/release/cec-tunnel cec-tunnel-${{ matrix.suffix }}
-          cp target/${{ matrix.target }}/release/cec-tunnel-server cec-tunnel-server-${{ matrix.suffix }}
-          chmod +x cec-tunnel-${{ matrix.suffix }} cec-tunnel-server-${{ matrix.suffix }}
+          docker run --rm --platform linux/arm64 \
+            -v "$PWD":/app -w /app \
+            rust:1.75-bookworm \
+            bash -c "cargo build --release && \
+                     cp target/release/cec-tunnel cec-tunnel-linux-arm64 && \
+                     cp target/release/cec-tunnel-server cec-tunnel-server-linux-arm64"
+          chmod +x cec-tunnel-linux-arm64 cec-tunnel-server-linux-arm64
       
       - name: Upload client
         uses: actions/upload-artifact@v4
         with:
-          name: cec-tunnel-${{ matrix.suffix }}
-          path: cec-tunnel-${{ matrix.suffix }}
+          name: cec-tunnel-linux-arm64
+          path: cec-tunnel-linux-arm64
 
       - name: Upload server
         uses: actions/upload-artifact@v4
         with:
-          name: cec-tunnel-server-${{ matrix.suffix }}
-          path: cec-tunnel-server-${{ matrix.suffix }}
+          name: cec-tunnel-server-linux-arm64
+          path: cec-tunnel-server-linux-arm64
 
   release:
-    needs: [build-native, build-cross]
+    needs: [build-native, build-linux-arm64]
     runs-on: ubuntu-latest
     permissions:
       contents: write
