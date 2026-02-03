@@ -1,6 +1,6 @@
 //! 隧道管理器
 
-use crate::common::protocol::{ClientInfo, TunnelConfig, TunnelInfo, TunnelType, WsMessage};
+use crate::common::protocol::{ClientInfo, TunnelConfig, TunnelInfo, WsMessage};
 use dashmap::DashMap;
 use std::sync::Arc;
 use tokio::net::TcpListener;

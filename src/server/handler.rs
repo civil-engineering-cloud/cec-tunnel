@@ -1,7 +1,7 @@
 //! WebSocket 和 HTTP 处理器
 
 use crate::common::protocol::WsMessage;
-use crate::server::manager::ServerState;
+use crate::manager::ServerState;
 use axum::{
     extract::{
         ws::{Message, WebSocket},
@@ -12,7 +12,7 @@ use axum::{
 use futures::{SinkExt, StreamExt};
 use serde_json::json;
 use tokio::sync::mpsc;
-use tracing::{error, info, warn};
+use tracing::info;
 
 pub async fn ws_handler(
     ws: WebSocketUpgrade,

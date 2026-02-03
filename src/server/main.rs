@@ -5,6 +5,9 @@
 mod handler;
 mod manager;
 
+#[path = "../common/mod.rs"]
+mod common;
+
 use anyhow::Result;
 use axum::{routing::get, Router};
 use clap::Parser;
