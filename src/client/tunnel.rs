@@ -11,7 +11,7 @@ use tokio::sync::{mpsc, RwLock};
 use tokio_tungstenite::{connect_async, tungstenite::Message};
 use tracing::{debug, error, info, warn};
 
-use crate::protocol::{ClientInfo, TunnelConfig, TunnelInfo, WsMessage};
+use crate::common::protocol::{ClientInfo, TunnelConfig, TunnelInfo, WsMessage};
 
 pub struct TunnelClient {
     server_url: String,
