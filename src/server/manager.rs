@@ -15,22 +15,27 @@ pub struct ServerState {
     pub connections: Arc<DashMap<String, ConnectionState>>,
     pub port_start: u16,
     pub port_end: u16,
+    #[allow(dead_code)] // 预留：Token 认证功能
     pub auth_token: Option<String>,
 }
 
 pub struct ClientState {
     pub info: ClientInfo,
+    #[allow(dead_code)] // 用于 send_to_client
     pub tx: mpsc::UnboundedSender<WsMessage>,
     pub tunnel_ids: Vec<String>,
 }
 
 pub struct TunnelState {
     pub info: TunnelInfo,
+    #[allow(dead_code)] // 预留：用于接受外部连接
     pub listener: Option<TcpListener>,
 }
 
 pub struct ConnectionState {
+    #[allow(dead_code)] // 预留：连接追踪
     pub tunnel_id: String,
+    #[allow(dead_code)] // 预留：连接追踪
     pub client_id: String,
     pub tx: mpsc::UnboundedSender<Vec<u8>>,
 }
@@ -156,6 +161,7 @@ impl ServerState {
         }
     }
 
+    #[allow(dead_code)] // 预留：服务端主动推送消息
     pub fn send_to_client(&self, client_id: &str, msg: WsMessage) {
         if let Some(client) = self.clients.get(client_id) {
             if let Err(e) = client.tx.send(msg) {

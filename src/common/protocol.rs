@@ -103,6 +103,9 @@ mod base64_bytes {
 }
 
 impl TunnelConfig {
+    /// 解析隧道配置字符串
+    /// 格式: type:local_port:remote_port 或 type:local_addr:local_port:remote_port
+    #[allow(dead_code)] // 仅客户端使用
     pub fn parse(s: &str) -> Option<Self> {
         let parts: Vec<&str> = s.split(':').collect();
 
