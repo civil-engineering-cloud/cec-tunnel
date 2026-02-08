@@ -1,6 +1,6 @@
 [package]
 name = "cec-tunnel"
-version = "0.1.2"
+version = "0.2.0"
 edition = "2021"
 description = "CEC Tunnel - 轻量级内网穿透工具 (客户端 + 服务端)"
 license = "MIT"

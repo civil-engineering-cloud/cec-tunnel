@@ -24,7 +24,7 @@ struct Args {
     bind: String,
 
     /// WebSocket 端口
-    #[arg(short, long, default_value = "8880")]
+    #[arg(short, long, default_value = "8888")]
     port: u16,
 
     /// 隧道端口范围起始

@@ -3,9 +3,10 @@
 use crate::common::protocol::{ClientInfo, TunnelConfig, TunnelInfo, WsMessage};
 use dashmap::DashMap;
 use std::sync::Arc;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
 use tokio::sync::mpsc;
-use tracing::{error, info, warn};
+use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
 #[derive(Clone)]
@@ -15,27 +16,25 @@ pub struct ServerState {
     pub connections: Arc<DashMap<String, ConnectionState>>,
     pub port_start: u16,
     pub port_end: u16,
-    #[allow(dead_code)] // 预留：Token 认证功能
+    #[allow(dead_code)]
     pub auth_token: Option<String>,
 }
 
 pub struct ClientState {
     pub info: ClientInfo,
-    #[allow(dead_code)] // 用于 send_to_client
+    #[allow(dead_code)] // 预留：服务端主动推送
     pub tx: mpsc::UnboundedSender<WsMessage>,
     pub tunnel_ids: Vec<String>,
 }
 
 pub struct TunnelState {
     pub info: TunnelInfo,
-    #[allow(dead_code)] // 预留：用于接受外部连接
-    pub listener: Option<TcpListener>,
+    pub shutdown: Option<tokio::sync::broadcast::Sender<()>>,
 }
 
 pub struct ConnectionState {
     #[allow(dead_code)] // 预留：连接追踪
     pub tunnel_id: String,
-    #[allow(dead_code)] // 预留：连接追踪
     pub client_id: String,
     pub tx: mpsc::UnboundedSender<Vec<u8>>,
 }
@@ -58,12 +57,16 @@ impl ServerState {
         tunnels: Vec<TunnelConfig>,
         tx: mpsc::UnboundedSender<WsMessage>,
     ) -> Result<(String, Vec<TunnelInfo>), String> {
-        let client_id = client.id.clone();
+        let client_id = if client.id.is_empty() {
+            Uuid::new_v4().to_string()
+        } else {
+            client.id.clone()
+        };
         let mut tunnel_infos = Vec::new();
         let mut tunnel_ids = Vec::new();
 
         for config in tunnels {
-            match self.create_tunnel(&client_id, config).await {
+            match self.create_tunnel(&client_id, config, tx.clone()).await {
                 Ok(info) => {
                     tunnel_ids.push(info.id.clone());
                     tunnel_infos.push(info);
@@ -74,10 +77,13 @@ impl ServerState {
             }
         }
 
+        let mut stored_client = client;
+        stored_client.id = client_id.clone();
+
         self.clients.insert(
             client_id.clone(),
             ClientState {
-                info: client,
+                info: stored_client,
                 tx,
                 tunnel_ids,
             },
@@ -91,9 +97,11 @@ impl ServerState {
         &self,
         client_id: &str,
         config: TunnelConfig,
+        client_tx: mpsc::UnboundedSender<WsMessage>,
     ) -> Result<TunnelInfo, String> {
+        // 分配端口
         let server_port = if let Some(port) = config.remote_port {
-            if port >= self.port_start && port <= self.port_end {
+            if port >= self.port_start && port <= self.port_end && !self.is_port_used(port) {
                 port
             } else {
                 self.find_available_port().await?
@@ -102,6 +110,7 @@ impl ServerState {
             self.find_available_port().await?
         };
 
+        // 绑定端口
         let listener = TcpListener::bind(format!("0.0.0.0:{}", server_port))
             .await
             .map_err(|e| format!("绑定端口 {} 失败: {}", server_port, e))?;
@@ -111,26 +120,112 @@ impl ServerState {
             id: tunnel_id.clone(),
             client_id: client_id.to_string(),
             tunnel_type: config.tunnel_type,
-            name: config.name.unwrap_or_else(|| format!("tunnel-{}", server_port)),
+            name: config
+                .name
+                .unwrap_or_else(|| format!("tunnel-{}", server_port)),
             local_addr: config.local_addr,
             local_port: config.local_port,
             server_port,
             state: "active".to_string(),
         };
 
+        // 启动 accept 循环
+        let (shutdown_tx, _) = tokio::sync::broadcast::channel::<()>(1);
+        let mut shutdown_rx = shutdown_tx.subscribe();
+        let connections = Arc::clone(&self.connections);
+        let tid = tunnel_id.clone();
+        let cid = client_id.to_string();
+
+        tokio::spawn(async move {
+            loop {
+                tokio::select! {
+                    result = listener.accept() => {
+                        match result {
+                            Ok((stream, addr)) => {
+                                debug!("新连接 {} -> 隧道 {}", addr, tid);
+                                let conn_id = Uuid::new_v4().to_string();
+                                let (data_tx, mut data_rx) = mpsc::unbounded_channel::<Vec<u8>>();
+
+                                connections.insert(conn_id.clone(), ConnectionState {
+                                    tunnel_id: tid.clone(),
+                                    client_id: cid.clone(),
+                                    tx: data_tx,
+                                });
+
+                                // 通知客户端有新连接
+                                let _ = client_tx.send(WsMessage::NewConnection {
+                                    tunnel_id: tid.clone(),
+                                    conn_id: conn_id.clone(),
+                                });
+
+                                let conns = Arc::clone(&connections);
+                                let ctx = client_tx.clone();
+                                let cid2 = conn_id.clone();
+
+                                tokio::spawn(async move {
+                                    let (mut read_half, mut write_half) = stream.into_split();
+                                    let conn_id_r = cid2.clone();
+                                    let ctx_r = ctx.clone();
+
+                                    // 外部 -> 客户端
+                                    let read_task = tokio::spawn(async move {
+                                        let mut buf = [0u8; 8192];
+                                        loop {
+                                            match read_half.read(&mut buf).await {
+                                                Ok(0) => break,
+                                                Ok(n) => {
+                                                    if ctx_r.send(WsMessage::Data {
+                                                        conn_id: conn_id_r.clone(),
+                                                        data: buf[..n].to_vec(),
+                                                    }).is_err() {
+                                                        break;
+                                                    }
+                                                }
+                                                Err(_) => break,
+                                            }
+                                        }
+                                    });
+
+                                    // 客户端 -> 外部
+                                    let write_task = tokio::spawn(async move {
+                                        while let Some(data) = data_rx.recv().await {
+                                            if write_half.write_all(&data).await.is_err() {
+                                                break;
+                                            }
+                                        }
+                                    });
+
+                                    tokio::select! {
+                                        _ = read_task => {}
+                                        _ = write_task => {}
+                                    }
+
+                                    conns.remove(&cid2);
+                                    let _ = ctx.send(WsMessage::CloseConnection { conn_id: cid2 });
+                                });
+                            }
+                            Err(e) => {
+                                error!("Accept 错误: {}", e);
+                            }
+                        }
+                    }
+                    _ = shutdown_rx.recv() => {
+                        info!("隧道 {} 监听关闭", tid);
+                        break;
+                    }
+                }
+            }
+        });
+
         self.tunnels.insert(
             tunnel_id.clone(),
             TunnelState {
                 info: info.clone(),
-                listener: Some(listener),
+                shutdown: Some(shutdown_tx),
             },
         );
 
-        info!(
-            "隧道创建: {} -> 0.0.0.0:{}",
-            tunnel_id, server_port
-        );
-
+        info!("隧道创建: {} -> 0.0.0.0:{}", tunnel_id, server_port);
         Ok(info)
     }
 
@@ -154,19 +249,24 @@ impl ServerState {
     pub fn remove_client(&self, client_id: &str) {
         if let Some((_, client)) = self.clients.remove(client_id) {
             for tunnel_id in client.tunnel_ids {
-                self.tunnels.remove(&tunnel_id);
-                info!("隧道移除: {}", tunnel_id);
+                if let Some((_, tunnel)) = self.tunnels.remove(&tunnel_id) {
+                    if let Some(shutdown) = tunnel.shutdown {
+                        let _ = shutdown.send(());
+                    }
+                    info!("隧道移除: {}", tunnel_id);
+                }
+            }
+            // 清理该客户端的所有连接
+            let conn_ids: Vec<String> = self
+                .connections
+                .iter()
+                .filter(|c| c.client_id == client_id)
+                .map(|c| c.key().clone())
+                .collect();
+            for conn_id in conn_ids {
+                self.connections.remove(&conn_id);
             }
             info!("客户端断开: {}", client_id);
-        }
-    }
-
-    #[allow(dead_code)] // 预留：服务端主动推送消息
-    pub fn send_to_client(&self, client_id: &str, msg: WsMessage) {
-        if let Some(client) = self.clients.get(client_id) {
-            if let Err(e) = client.tx.send(msg) {
-                error!("发送消息失败: {}", e);
-            }
         }
     }
 }

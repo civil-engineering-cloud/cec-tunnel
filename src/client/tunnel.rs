@@ -87,14 +87,31 @@ impl TunnelClient {
         // 创建发送通道
         let (tx, mut rx) = mpsc::unbounded_channel::<WsMessage>();
 
-        // 发送任务
+        // 发送任务 — Data 用 Binary 帧，其他用 Text/JSON
         let send_task = tokio::spawn(async move {
             while let Some(msg) = rx.recv().await {
-                let text = match serde_json::to_string(&msg) {
-                    Ok(t) => t,
-                    Err(_) => continue,
+                let ws_msg = match &msg {
+                    WsMessage::Data { conn_id, data } => {
+                        // Binary 帧: conn_id(36 bytes) + payload
+                        let mut buf = Vec::with_capacity(36 + data.len());
+                        let id_bytes = conn_id.as_bytes();
+                        if id_bytes.len() >= 36 {
+                            buf.extend_from_slice(&id_bytes[..36]);
+                        } else {
+                            buf.extend_from_slice(id_bytes);
+                            buf.resize(36, 0);
+                        }
+                        buf.extend_from_slice(data);
+                        Message::Binary(buf)
+                    }
+                    _ => {
+                        match serde_json::to_string(&msg) {
+                            Ok(t) => Message::Text(t),
+                            Err(_) => continue,
+                        }
+                    }
                 };
-                if write.send(Message::Text(text)).await.is_err() {
+                if write.send(ws_msg).await.is_err() {
                     break;
                 }
             }
@@ -168,6 +185,14 @@ impl TunnelClient {
                             error!("服务器错误 {}: {}", code, message);
                         }
                         _ => {}
+                    }
+                }
+                Ok(Message::Binary(data)) => {
+                    // Binary 帧: conn_id(36 bytes) + payload
+                    if data.len() > 36 {
+                        let conn_id = String::from_utf8_lossy(&data[..36]).to_string();
+                        let payload = data[36..].to_vec();
+                        self.handle_data(&conn_id, payload).await;
                     }
                 }
                 Ok(Message::Close(_)) => {

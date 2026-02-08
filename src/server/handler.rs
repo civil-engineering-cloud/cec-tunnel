@@ -12,7 +12,7 @@ use axum::{
 use futures::{SinkExt, StreamExt};
 use serde_json::json;
 use tokio::sync::mpsc;
-use tracing::info;
+use tracing::debug;
 
 pub async fn ws_handler(
     ws: WebSocketUpgrade,
@@ -26,13 +26,31 @@ async fn handle_socket(socket: WebSocket, state: ServerState) {
     let (tx, mut rx) = mpsc::unbounded_channel::<WsMessage>();
     let mut client_id: Option<String> = None;
 
-    // 发送任务
+    // 发送任务 — Data 用 Binary 帧，其他用 Text/JSON
     let send_task = tokio::spawn(async move {
         while let Some(msg) = rx.recv().await {
-            if let Ok(json) = serde_json::to_string(&msg) {
-                if ws_tx.send(Message::Text(json)).await.is_err() {
-                    break;
+            let ws_msg = match &msg {
+                WsMessage::Data { conn_id, data } => {
+                    let mut buf = Vec::with_capacity(36 + data.len());
+                    let id_bytes = conn_id.as_bytes();
+                    if id_bytes.len() >= 36 {
+                        buf.extend_from_slice(&id_bytes[..36]);
+                    } else {
+                        buf.extend_from_slice(id_bytes);
+                        buf.resize(36, 0);
+                    }
+                    buf.extend_from_slice(data);
+                    Message::Binary(buf)
                 }
+                _ => {
+                    match serde_json::to_string(&msg) {
+                        Ok(t) => Message::Text(t),
+                        Err(_) => continue,
+                    }
+                }
+            };
+            if ws_tx.send(ws_msg).await.is_err() {
+                break;
             }
         }
     });
@@ -68,7 +86,7 @@ async fn handle_socket(socket: WebSocket, state: ServerState) {
                             let _ = tx.send(WsMessage::Pong { timestamp });
                         }
                         WsMessage::ConnectionReady { tunnel_id, conn_id } => {
-                            info!("连接就绪: {} / {}", tunnel_id, conn_id);
+                            debug!("连接就绪: {} / {}", tunnel_id, conn_id);
                         }
                         WsMessage::Data { conn_id, data } => {
                             if let Some(conn) = state.connections.get(&conn_id) {
@@ -79,6 +97,16 @@ async fn handle_socket(socket: WebSocket, state: ServerState) {
                             state.connections.remove(&conn_id);
                         }
                         _ => {}
+                    }
+                }
+            }
+            Message::Binary(data) => {
+                // Binary 帧: conn_id(36 bytes) + payload
+                if data.len() > 36 {
+                    let conn_id = String::from_utf8_lossy(&data[..36]).to_string();
+                    let payload = data[36..].to_vec();
+                    if let Some(conn) = state.connections.get(&conn_id) {
+                        let _ = conn.tx.send(payload);
                     }
                 }
             }
