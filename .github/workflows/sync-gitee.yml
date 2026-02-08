@@ -21,10 +21,54 @@ env:
 jobs:
   sync-code:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      metadata: write
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - name: Sync repo metadata
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
+        run: |
+          DESCRIPTION="轻量级内网穿透工具，类似 frp，基于 Rust + WebSocket，支持 Linux / macOS / Windows"
+          HOMEPAGE="https://gitee.com/${GITEE_OWNER}/${GITEE_REPO}"
+          TOPICS='["tunnel","frp","reverse-proxy","websocket","rust","nat-traversal","intranet-penetration"]'
+
+          # 更新 GitHub 仓库描述和主页
+          curl -m 10 -s -X PATCH \
+            "https://api.github.com/repos/${GITHUB_REPO}" \
+            -H "Authorization: token ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github.v3+json" \
+            -d "$(jq -n \
+              --arg desc "$DESCRIPTION" \
+              --arg hp "$HOMEPAGE" \
+              '{description: $desc, homepage: $hp}')" > /dev/null
+          echo "✅ GitHub description updated"
+
+          # 更新 GitHub topics
+          curl -m 10 -s -X PUT \
+            "https://api.github.com/repos/${GITHUB_REPO}/topics" \
+            -H "Authorization: token ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github.mercy-preview+json" \
+            -d "{\"names\": $TOPICS}" > /dev/null
+          echo "✅ GitHub topics updated"
+
+          # 更新 Gitee 仓库描述（如果有 token）
+          if [ -n "$GITEE_TOKEN" ]; then
+            curl -m 10 -s -X PATCH \
+              "https://gitee.com/api/v5/repos/${GITEE_OWNER}/${GITEE_REPO}" \
+              -H "Content-Type: application/json" \
+              -d "$(jq -n \
+                --arg token "$GITEE_TOKEN" \
+                --arg desc "$DESCRIPTION" \
+                --arg hp "https://github.com/${GITHUB_REPO}" \
+                '{access_token: $token, description: $desc, homepage: $hp}')" > /dev/null
+            echo "✅ Gitee description updated"
+          fi
 
       - name: Sync to Gitee
         env:
