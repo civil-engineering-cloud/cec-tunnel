@@ -4,10 +4,16 @@ on:
   push:
     branches: [main, master]
     tags: ['v*']
+  release:
+    types: [published]
   workflow_dispatch:
 
+env:
+  GITEE_OWNER: civil-engineering-cloud
+  GITEE_REPO: cec-tunnel
+
 jobs:
-  sync:
+  sync-code:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -24,3 +30,86 @@ jobs:
           ssh-keyscan -t ecdsa,ed25519,rsa gitee.com >> ~/.ssh/known_hosts 2>/dev/null
           git remote add gitee git@gitee.com:civil-engineering-cloud/cec-tunnel.git || true
           git push --mirror gitee
+
+  sync-release:
+    if: github.event_name == 'release'
+    runs-on: ubuntu-latest
+    needs: sync-code
+    steps:
+      - name: Get release info
+        id: release
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+          BODY: ${{ github.event.release.body }}
+        run: |
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "body<<RELEASE_BODY_EOF" >> "$GITHUB_OUTPUT"
+          echo "$BODY" >> "$GITHUB_OUTPUT"
+          echo "RELEASE_BODY_EOF" >> "$GITHUB_OUTPUT"
+
+      - name: Download release assets from GitHub
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          mkdir -p assets
+          gh release download "$TAG" \
+            --repo "${{ github.repository }}" \
+            --dir assets \
+            --pattern '*'
+          echo "Downloaded assets:"
+          ls -la assets/
+
+      - name: Create Gitee release and upload assets
+        env:
+          GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
+          TAG: ${{ steps.release.outputs.tag }}
+          BODY: ${{ steps.release.outputs.body }}
+        run: |
+          # 创建 Gitee Release
+          RESPONSE=$(curl -s -X POST \
+            "https://gitee.com/api/v5/repos/${GITEE_OWNER}/${GITEE_REPO}/releases" \
+            -H "Content-Type: application/json" \
+            -d "$(jq -n \
+              --arg token "$GITEE_TOKEN" \
+              --arg tag "$TAG" \
+              --arg name "CEC Tunnel $TAG" \
+              --arg body "$BODY" \
+              '{
+                access_token: $token,
+                tag_name: $tag,
+                name: $name,
+                body: $body,
+                prerelease: false
+              }')")
+
+          RELEASE_ID=$(echo "$RESPONSE" | jq -r '.id')
+          if [ "$RELEASE_ID" = "null" ] || [ -z "$RELEASE_ID" ]; then
+            echo "Failed to create release, response:"
+            echo "$RESPONSE"
+            # 尝试获取已存在的 release
+            RELEASE_ID=$(curl -s \
+              "https://gitee.com/api/v5/repos/${GITEE_OWNER}/${GITEE_REPO}/releases/tags/${TAG}?access_token=${GITEE_TOKEN}" \
+              | jq -r '.id')
+            if [ "$RELEASE_ID" = "null" ] || [ -z "$RELEASE_ID" ]; then
+              echo "Cannot find or create release for tag $TAG"
+              exit 1
+            fi
+            echo "Found existing release: $RELEASE_ID"
+          else
+            echo "Created release: $RELEASE_ID"
+          fi
+
+          # 上传所有 assets
+          for file in assets/*; do
+            filename=$(basename "$file")
+            echo "Uploading: $filename"
+            curl -s -X POST \
+              "https://gitee.com/api/v5/repos/${GITEE_OWNER}/${GITEE_REPO}/releases/${RELEASE_ID}/attach_files" \
+              -H "Content-Type: multipart/form-data" \
+              -F "access_token=${GITEE_TOKEN}" \
+              -F "file=@${file}"
+            echo " -> Done: $filename"
+          done
+
+          echo "All assets uploaded to Gitee release $TAG"

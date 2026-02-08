@@ -18,7 +18,10 @@
 
 ## 下载
 
-从 [Releases](https://github.com/civil-engineering-cloud/cec-tunnel/releases) 下载：
+从 Releases 下载：
+
+- GitHub: https://github.com/civil-engineering-cloud/cec-tunnel/releases
+- Gitee: https://gitee.com/civil-engineering-cloud/cec-tunnel/releases
 
 | 组件 | 平台 | 文件 |
 |------|------|------|

@@ -1,12 +1,15 @@
 #!/bin/bash
 # CEC Tunnel 一键安装脚本
-# 用法: curl -fsSL https://raw.githubusercontent.com/civil-engineering-cloud/cec-tunnel/main/install.sh | bash
+# GitHub: curl -fsSL https://raw.githubusercontent.com/civil-engineering-cloud/cec-tunnel/main/install.sh | bash
+# Gitee:  curl -fsSL https://gitee.com/civil-engineering-cloud/cec-tunnel/raw/main/install.sh | MIRROR=gitee bash
 
 set -e
 
 REPO="civil-engineering-cloud/cec-tunnel"
 INSTALL_DIR="/usr/local/bin"
 BINARY="cec-tunnel"
+# 默认使用 GitHub，国内可设置 MIRROR=gitee
+MIRROR="${MIRROR:-github}"
 
 # 颜色
 RED='\033[0;31m'
@@ -42,17 +45,23 @@ detect_platform() {
 # 获取最新版本
 get_latest_version() {
   info "获取最新版本..."
-  VERSION=$(curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest" \
-    | grep '"tag_name"' | head -1 | sed 's/.*"tag_name": *"\([^"]*\)".*/\1/')
 
-  if [ -z "$VERSION" ]; then
-    # GitHub API 限流时尝试从 redirect 获取
-    VERSION=$(curl -fsSI "https://github.com/${REPO}/releases/latest" 2>/dev/null \
-      | grep -i '^location:' | sed 's|.*/tag/||' | tr -d '\r\n')
-  fi
-
-  if [ -z "$VERSION" ]; then
-    error "无法获取最新版本，请检查网络或访问 https://github.com/${REPO}/releases"
+  if [ "$MIRROR" = "gitee" ]; then
+    VERSION=$(curl -fsSL "https://gitee.com/api/v5/repos/${REPO}/releases/latest" \
+      | grep '"tag_name"' | head -1 | sed 's/.*"tag_name": *"\([^"]*\)".*/\1/')
+    if [ -z "$VERSION" ]; then
+      error "无法获取最新版本，请检查网络或访问 https://gitee.com/${REPO}/releases"
+    fi
+  else
+    VERSION=$(curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest" \
+      | grep '"tag_name"' | head -1 | sed 's/.*"tag_name": *"\([^"]*\)".*/\1/')
+    if [ -z "$VERSION" ]; then
+      VERSION=$(curl -fsSI "https://github.com/${REPO}/releases/latest" 2>/dev/null \
+        | grep -i '^location:' | sed 's|.*/tag/||' | tr -d '\r\n')
+    fi
+    if [ -z "$VERSION" ]; then
+      error "无法获取最新版本，请检查网络或访问 https://github.com/${REPO}/releases"
+    fi
   fi
 
   info "最新版本: ${VERSION}"
@@ -60,7 +69,24 @@ get_latest_version() {
 
 # 下载
 download() {
-  DOWNLOAD_URL="https://github.com/${REPO}/releases/download/${VERSION}/${FILENAME}"
+  if [ "$MIRROR" = "gitee" ]; then
+    # Gitee release 附件下载需要先获取 URL
+    ASSETS_JSON=$(curl -fsSL "https://gitee.com/api/v5/repos/${REPO}/releases/tags/${VERSION}")
+    DOWNLOAD_URL=$(echo "$ASSETS_JSON" | python3 -c "
+import sys, json
+data = json.load(sys.stdin)
+for asset in data.get('assets', []):
+    if asset['name'] == '${FILENAME}':
+        print(asset['browser_download_url'])
+        break
+" 2>/dev/null)
+    if [ -z "$DOWNLOAD_URL" ]; then
+      error "在 Gitee Release 中未找到 ${FILENAME}，请尝试 GitHub: MIRROR=github"
+    fi
+  else
+    DOWNLOAD_URL="https://github.com/${REPO}/releases/download/${VERSION}/${FILENAME}"
+  fi
+
   TMP_FILE=$(mktemp)
 
   info "下载 ${FILENAME}..."
@@ -108,7 +134,7 @@ print_usage() {
   echo "    -t tcp:22:10022 \\"
   echo "    -t tcp:3306:10306"
   echo ""
-  echo "更多信息: https://github.com/${REPO}"
+  echo "更多信息: https://gitee.com/${REPO} (国内) | https://github.com/${REPO}"
   echo ""
 }
 
