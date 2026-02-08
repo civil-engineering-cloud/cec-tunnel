@@ -193,7 +193,7 @@ jobs:
           for file in assets/*; do
             filename=$(basename "$file")
             echo -n "Uploading: $filename ... "
-            RESULT=$(curl -m 60 -s -X POST \
+            RESULT=$(curl -m 300 -s -X POST \
               "https://gitee.com/api/v5/repos/${GITEE_OWNER}/${GITEE_REPO}/releases/${RELEASE_ID}/attach_files" \
               -H "Content-Type: multipart/form-data" \
               -F "access_token=${GITEE_TOKEN}" \
