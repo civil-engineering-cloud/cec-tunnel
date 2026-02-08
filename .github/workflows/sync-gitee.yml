@@ -15,7 +15,12 @@ jobs:
           fetch-depth: 0
 
       - name: Sync to Gitee
-        uses: pixta-dev/repository-mirroring-action@v1
-        with:
-          target_repo_url: git@gitee.com:civil-engineering-cloud/cec-tunnel.git
-          ssh_private_key: ${{ secrets.GITEE_SSH_PRIVATE_KEY }}
+        env:
+          GITEE_SSH_PRIVATE_KEY: ${{ secrets.GITEE_SSH_PRIVATE_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$GITEE_SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -t ecdsa,ed25519,rsa gitee.com >> ~/.ssh/known_hosts 2>/dev/null
+          git remote add gitee git@gitee.com:civil-engineering-cloud/cec-tunnel.git || true
+          git push --mirror gitee
