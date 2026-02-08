@@ -173,6 +173,7 @@ jobs:
                 '{
                   access_token: $token,
                   tag_name: $tag,
+                  target_commitish: "main",
                   name: $name,
                   body: $body,
                   prerelease: false
