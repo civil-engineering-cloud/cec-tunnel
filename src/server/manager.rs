@@ -246,6 +246,40 @@ impl ServerState {
             .any(|t| t.value().info.server_port == port)
     }
 
+    /// 关闭单个隧道
+    pub fn close_tunnel(&self, tunnel_id: &str) -> Result<(), String> {
+        // 从 tunnels 中移除
+        let tunnel = self
+            .tunnels
+            .remove(tunnel_id)
+            .map(|(_, t)| t)
+            .ok_or_else(|| format!("隧道 {} 不存在", tunnel_id))?;
+
+        // 发送 shutdown 信号关闭 TCP listener
+        if let Some(shutdown) = tunnel.shutdown {
+            let _ = shutdown.send(());
+        }
+
+        // 从所属客户端的 tunnel_ids 中移除
+        if let Some(mut client) = self.clients.get_mut(&tunnel.info.client_id) {
+            client.tunnel_ids.retain(|id| id != tunnel_id);
+        }
+
+        // 清理该隧道的所有连接
+        let conn_ids: Vec<String> = self
+            .connections
+            .iter()
+            .filter(|c| c.tunnel_id == tunnel_id)
+            .map(|c| c.key().clone())
+            .collect();
+        for conn_id in conn_ids {
+            self.connections.remove(&conn_id);
+        }
+
+        info!("隧道关闭: {}", tunnel_id);
+        Ok(())
+    }
+
     pub fn remove_client(&self, client_id: &str) {
         if let Some((_, client)) = self.clients.remove(client_id) {
             for tunnel_id in client.tunnel_ids {

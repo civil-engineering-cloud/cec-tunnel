@@ -3,7 +3,6 @@ name: Sync to Gitee
 on:
   push:
     branches: [main, master]
-    tags: ['v*']
   release:
     types: [published]
   workflow_dispatch:
@@ -187,23 +186,50 @@ jobs:
             echo "Created release: $RELEASE_ID"
           fi
 
-          # 上传所有 assets
-          SUCCESS=0
-          FAIL=0
-          for file in assets/*; do
-            filename=$(basename "$file")
-            echo -n "Uploading: $filename ... "
+          # 并行上传所有 assets（最多 4 个并发）
+          upload_file() {
+            local file="$1"
+            local filename=$(basename "$file")
+            local result_file="/tmp/upload_${filename}.result"
             RESULT=$(curl -m 300 -s -X POST \
               "https://gitee.com/api/v5/repos/${GITEE_OWNER}/${GITEE_REPO}/releases/${RELEASE_ID}/attach_files" \
               -H "Content-Type: multipart/form-data" \
               -F "access_token=${GITEE_TOKEN}" \
               -F "file=@${file}")
             if echo "$RESULT" | jq -e '.browser_download_url' > /dev/null 2>&1; then
-              echo "✅"
+              echo "✅ $filename"
+              echo "ok" > "$result_file"
+            else
+              echo "❌ $filename"
+              echo "$RESULT"
+              echo "fail" > "$result_file"
+            fi
+          }
+
+          PIDS=()
+          MAX_PARALLEL=4
+          for file in assets/*; do
+            upload_file "$file" &
+            PIDS+=($!)
+            # 限制并发数
+            if [ ${#PIDS[@]} -ge $MAX_PARALLEL ]; then
+              wait "${PIDS[0]}"
+              PIDS=("${PIDS[@]:1}")
+            fi
+          done
+          # 等待剩余任务
+          for pid in "${PIDS[@]}"; do
+            wait "$pid"
+          done
+
+          # 统计结果
+          SUCCESS=0
+          FAIL=0
+          for f in /tmp/upload_*.result; do
+            [ -f "$f" ] || continue
+            if [ "$(cat "$f")" = "ok" ]; then
               SUCCESS=$((SUCCESS + 1))
             else
-              echo "❌"
-              echo "$RESULT"
               FAIL=$((FAIL + 1))
             fi
           done

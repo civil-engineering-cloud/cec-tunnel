@@ -9,7 +9,7 @@ mod manager;
 mod common;
 
 use anyhow::Result;
-use axum::{routing::get, Router};
+use axum::{routing::{get, delete}, Router};
 use clap::Parser;
 use std::net::SocketAddr;
 use tower_http::cors::CorsLayer;
@@ -68,6 +68,7 @@ async fn main() -> Result<()> {
         .route("/tunnel", get(handler::ws_handler))
         .route("/api/clients", get(handler::list_clients))
         .route("/api/tunnels", get(handler::list_tunnels))
+        .route("/api/tunnels/:id", delete(handler::close_tunnel))
         .layer(CorsLayer::permissive())
         .with_state(state);
 

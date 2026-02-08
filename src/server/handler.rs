@@ -5,8 +5,9 @@ use crate::manager::ServerState;
 use axum::{
     extract::{
         ws::{Message, WebSocket},
-        State, WebSocketUpgrade,
+        Path, State, WebSocketUpgrade,
     },
+    http::StatusCode,
     response::{IntoResponse, Json},
 };
 use futures::{SinkExt, StreamExt};
@@ -136,7 +137,8 @@ pub async fn list_clients(State(state): State<ServerState>) -> impl IntoResponse
             })
         })
         .collect();
-    Json(json!({ "clients": clients }))
+    let total = clients.len();
+    Json(json!({ "code": 0, "message": "success", "data": { "items": clients, "total": total } }))
 }
 
 pub async fn list_tunnels(State(state): State<ServerState>) -> impl IntoResponse {
@@ -154,5 +156,20 @@ pub async fn list_tunnels(State(state): State<ServerState>) -> impl IntoResponse
             })
         })
         .collect();
-    Json(json!({ "tunnels": tunnels }))
+    let total = tunnels.len();
+    Json(json!({ "code": 0, "message": "success", "data": { "items": tunnels, "total": total } }))
+}
+
+pub async fn close_tunnel(
+    State(state): State<ServerState>,
+    Path(tunnel_id): Path<String>,
+) -> impl IntoResponse {
+    match state.close_tunnel(&tunnel_id) {
+        Ok(_) => Json(json!({ "code": 0, "message": "success", "data": null })).into_response(),
+        Err(e) => (
+            StatusCode::NOT_FOUND,
+            Json(json!({ "code": 404, "message": e, "data": null })),
+        )
+            .into_response(),
+    }
 }
