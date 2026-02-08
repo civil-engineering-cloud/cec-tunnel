@@ -7,10 +7,16 @@ on:
   release:
     types: [published]
   workflow_dispatch:
+    inputs:
+      sync_release:
+        description: '同步 Release（填写 tag，如 v0.1.5，留空则只同步代码）'
+        required: false
+        default: ''
 
 env:
   GITEE_OWNER: civil-engineering-cloud
   GITEE_REPO: cec-tunnel
+  GITHUB_REPO: civil-engineering-cloud/cec-tunnel
 
 jobs:
   sync-code:
@@ -32,84 +38,135 @@ jobs:
           git push --mirror gitee
 
   sync-release:
-    if: github.event_name == 'release'
+    if: >
+      github.event_name == 'release' ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.sync_release != '')
     runs-on: ubuntu-latest
     needs: sync-code
     steps:
-      - name: Get release info
-        id: release
-        env:
-          TAG: ${{ github.event.release.tag_name }}
-          BODY: ${{ github.event.release.body }}
+      - name: Determine tag
+        id: tag
         run: |
-          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-          echo "body<<RELEASE_BODY_EOF" >> "$GITHUB_OUTPUT"
-          echo "$BODY" >> "$GITHUB_OUTPUT"
-          echo "RELEASE_BODY_EOF" >> "$GITHUB_OUTPUT"
+          if [ "${{ github.event_name }}" = "release" ]; then
+            echo "tag=${{ github.event.release.tag_name }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=${{ github.event.inputs.sync_release }}" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Download release assets from GitHub
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ steps.release.outputs.tag }}
+          TAG: ${{ steps.tag.outputs.tag }}
         run: |
           mkdir -p assets
+
+          # 获取 release body
+          RELEASE_JSON=$(gh release view "$TAG" --repo "${GITHUB_REPO}" --json body,name)
+          RELEASE_NAME=$(echo "$RELEASE_JSON" | jq -r '.name')
+          RELEASE_BODY=$(echo "$RELEASE_JSON" | jq -r '.body')
+
+          # 替换 GitHub 链接为 Gitee 链接
+          GITEE_BODY=$(echo "$RELEASE_BODY" | sed \
+            -e "s|https://github.com/${GITHUB_REPO}/releases/download/|https://gitee.com/${GITEE_OWNER}/${GITEE_REPO}/releases/download/|g" \
+            -e "s|https://raw.githubusercontent.com/${GITHUB_REPO}/main/|https://gitee.com/${GITEE_OWNER}/${GITEE_REPO}/raw/main/|g" \
+            -e "s|https://github.com/${GITHUB_REPO}|https://gitee.com/${GITEE_OWNER}/${GITEE_REPO}|g")
+
+          echo "name=${RELEASE_NAME}" >> "$GITHUB_OUTPUT"
+          # 用文件传递 body，避免多行问题
+          echo "$GITEE_BODY" > /tmp/release_body.txt
+
+          # 下载所有 assets
           gh release download "$TAG" \
-            --repo "${{ github.repository }}" \
+            --repo "${GITHUB_REPO}" \
             --dir assets \
             --pattern '*'
           echo "Downloaded assets:"
           ls -la assets/
+        id: release_info
 
       - name: Create Gitee release and upload assets
         env:
           GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
-          TAG: ${{ steps.release.outputs.tag }}
-          BODY: ${{ steps.release.outputs.body }}
+          TAG: ${{ steps.tag.outputs.tag }}
         run: |
-          # 创建 Gitee Release
-          RESPONSE=$(curl -s -X POST \
-            "https://gitee.com/api/v5/repos/${GITEE_OWNER}/${GITEE_REPO}/releases" \
-            -H "Content-Type: application/json" \
-            -d "$(jq -n \
-              --arg token "$GITEE_TOKEN" \
-              --arg tag "$TAG" \
-              --arg name "CEC Tunnel $TAG" \
-              --arg body "$BODY" \
-              '{
-                access_token: $token,
-                tag_name: $tag,
-                name: $name,
-                body: $body,
-                prerelease: false
-              }')")
+          BODY=$(cat /tmp/release_body.txt)
+          RELEASE_NAME="${{ steps.release_info.outputs.name }}"
+          if [ -z "$RELEASE_NAME" ]; then
+            RELEASE_NAME="CEC Tunnel ${TAG}"
+          fi
 
-          RELEASE_ID=$(echo "$RESPONSE" | jq -r '.id')
-          if [ "$RELEASE_ID" = "null" ] || [ -z "$RELEASE_ID" ]; then
-            echo "Failed to create release, response:"
-            echo "$RESPONSE"
-            # 尝试获取已存在的 release
-            RELEASE_ID=$(curl -s \
-              "https://gitee.com/api/v5/repos/${GITEE_OWNER}/${GITEE_REPO}/releases/tags/${TAG}?access_token=${GITEE_TOKEN}" \
-              | jq -r '.id')
+          # 先尝试获取已存在的 release
+          EXISTING=$(curl -m 10 -s \
+            "https://gitee.com/api/v5/repos/${GITEE_OWNER}/${GITEE_REPO}/releases/tags/${TAG}?access_token=${GITEE_TOKEN}")
+          RELEASE_ID=$(echo "$EXISTING" | jq -r '.id // empty')
+
+          if [ -n "$RELEASE_ID" ] && [ "$RELEASE_ID" != "null" ]; then
+            echo "Found existing release: $RELEASE_ID, updating..."
+            # 更新已有 release
+            curl -m 10 -s -X PATCH \
+              "https://gitee.com/api/v5/repos/${GITEE_OWNER}/${GITEE_REPO}/releases/${RELEASE_ID}" \
+              -H "Content-Type: application/json" \
+              -d "$(jq -n \
+                --arg token "$GITEE_TOKEN" \
+                --arg tag "$TAG" \
+                --arg name "$RELEASE_NAME" \
+                --arg body "$BODY" \
+                '{
+                  access_token: $token,
+                  tag_name: $tag,
+                  name: $name,
+                  body: $body
+                }')" > /dev/null
+          else
+            echo "Creating new release..."
+            RESPONSE=$(curl -m 10 -s -X POST \
+              "https://gitee.com/api/v5/repos/${GITEE_OWNER}/${GITEE_REPO}/releases" \
+              -H "Content-Type: application/json" \
+              -d "$(jq -n \
+                --arg token "$GITEE_TOKEN" \
+                --arg tag "$TAG" \
+                --arg name "$RELEASE_NAME" \
+                --arg body "$BODY" \
+                '{
+                  access_token: $token,
+                  tag_name: $tag,
+                  name: $name,
+                  body: $body,
+                  prerelease: false
+                }')")
+            RELEASE_ID=$(echo "$RESPONSE" | jq -r '.id')
             if [ "$RELEASE_ID" = "null" ] || [ -z "$RELEASE_ID" ]; then
-              echo "Cannot find or create release for tag $TAG"
+              echo "::error::Failed to create Gitee release"
+              echo "$RESPONSE"
               exit 1
             fi
-            echo "Found existing release: $RELEASE_ID"
-          else
             echo "Created release: $RELEASE_ID"
           fi
 
           # 上传所有 assets
+          SUCCESS=0
+          FAIL=0
           for file in assets/*; do
             filename=$(basename "$file")
-            echo "Uploading: $filename"
-            curl -s -X POST \
+            echo -n "Uploading: $filename ... "
+            RESULT=$(curl -m 60 -s -X POST \
               "https://gitee.com/api/v5/repos/${GITEE_OWNER}/${GITEE_REPO}/releases/${RELEASE_ID}/attach_files" \
               -H "Content-Type: multipart/form-data" \
               -F "access_token=${GITEE_TOKEN}" \
-              -F "file=@${file}"
-            echo " -> Done: $filename"
+              -F "file=@${file}")
+            if echo "$RESULT" | jq -e '.browser_download_url' > /dev/null 2>&1; then
+              echo "✅"
+              SUCCESS=$((SUCCESS + 1))
+            else
+              echo "❌"
+              echo "$RESULT"
+              FAIL=$((FAIL + 1))
+            fi
           done
 
-          echo "All assets uploaded to Gitee release $TAG"
+          echo ""
+          echo "=== Sync Complete ==="
+          echo "Success: $SUCCESS, Failed: $FAIL"
+          if [ "$FAIL" -gt 0 ]; then
+            exit 1
+          fi
