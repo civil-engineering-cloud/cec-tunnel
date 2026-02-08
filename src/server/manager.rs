@@ -2,6 +2,7 @@
 
 use crate::common::protocol::{ClientInfo, TunnelConfig, TunnelInfo, WsMessage};
 use dashmap::DashMap;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
@@ -18,6 +19,7 @@ pub struct ServerState {
     pub port_end: u16,
     #[allow(dead_code)]
     pub auth_token: Option<String>,
+    next_client_id: Arc<AtomicU64>,
 }
 
 pub struct ClientState {
@@ -30,6 +32,8 @@ pub struct ClientState {
 pub struct TunnelState {
     pub info: TunnelInfo,
     pub shutdown: Option<tokio::sync::broadcast::Sender<()>>,
+    pub bytes_sent: Arc<AtomicU64>,
+    pub bytes_recv: Arc<AtomicU64>,
 }
 
 pub struct ConnectionState {
@@ -48,6 +52,7 @@ impl ServerState {
             port_start,
             port_end,
             auth_token,
+            next_client_id: Arc::new(AtomicU64::new(1)),
         }
     }
 
@@ -57,10 +62,25 @@ impl ServerState {
         tunnels: Vec<TunnelConfig>,
         tx: mpsc::UnboundedSender<WsMessage>,
     ) -> Result<(String, Vec<TunnelInfo>), String> {
-        let client_id = if client.id.is_empty() {
-            Uuid::new_v4().to_string()
-        } else {
+        // 用客户端名称做去重，自增数字做 ID
+        let client_id = if !client.name.is_empty() {
+            // 同名客户端去重：清理旧的同名客户端及其隧道
+            let old_ids: Vec<String> = self
+                .clients
+                .iter()
+                .filter(|c| c.info.name == client.name)
+                .map(|c| c.key().clone())
+                .collect();
+            for old_id in old_ids {
+                info!("清理同名旧客户端: {} ({})", client.name, old_id);
+                self.remove_client(&old_id);
+            }
+            // 自增数字 ID
+            self.next_client_id.fetch_add(1, Ordering::Relaxed).to_string()
+        } else if !client.id.is_empty() {
             client.id.clone()
+        } else {
+            self.next_client_id.fetch_add(1, Ordering::Relaxed).to_string()
         };
         let mut tunnel_infos = Vec::new();
         let mut tunnel_ids = Vec::new();
@@ -99,10 +119,13 @@ impl ServerState {
         config: TunnelConfig,
         client_tx: mpsc::UnboundedSender<WsMessage>,
     ) -> Result<TunnelInfo, String> {
-        // 分配端口
-        let server_port = if let Some(port) = config.remote_port {
+        // 分配并绑定端口（find_available_port 直接返回 listener，避免竞态）
+        let (listener, server_port) = if let Some(port) = config.remote_port {
             if port >= self.port_start && port <= self.port_end && !self.is_port_used(port) {
-                port
+                let l = TcpListener::bind(format!("0.0.0.0:{}", port))
+                    .await
+                    .map_err(|e| format!("绑定端口 {} 失败: {}", port, e))?;
+                (l, port)
             } else {
                 self.find_available_port().await?
             }
@@ -110,11 +133,7 @@ impl ServerState {
             self.find_available_port().await?
         };
 
-        // 绑定端口
-        let listener = TcpListener::bind(format!("0.0.0.0:{}", server_port))
-            .await
-            .map_err(|e| format!("绑定端口 {} 失败: {}", server_port, e))?;
-
+        let now = chrono::Utc::now().to_rfc3339();
         let tunnel_id = Uuid::new_v4().to_string();
         let info = TunnelInfo {
             id: tunnel_id.clone(),
@@ -127,6 +146,10 @@ impl ServerState {
             local_port: config.local_port,
             server_port,
             state: "active".to_string(),
+            bytes_sent: 0,
+            bytes_recv: 0,
+            created_at: now.clone(),
+            last_active_at: now,
         };
 
         // 启动 accept 循环
@@ -135,6 +158,10 @@ impl ServerState {
         let connections = Arc::clone(&self.connections);
         let tid = tunnel_id.clone();
         let cid = client_id.to_string();
+        let sent_counter = Arc::new(AtomicU64::new(0));
+        let recv_counter = Arc::new(AtomicU64::new(0));
+        let sent_c = Arc::clone(&sent_counter);
+        let recv_c = Arc::clone(&recv_counter);
 
         tokio::spawn(async move {
             loop {
@@ -161,19 +188,23 @@ impl ServerState {
                                 let conns = Arc::clone(&connections);
                                 let ctx = client_tx.clone();
                                 let cid2 = conn_id.clone();
+                                let sc = Arc::clone(&sent_c);
+                                let rc = Arc::clone(&recv_c);
 
                                 tokio::spawn(async move {
                                     let (mut read_half, mut write_half) = stream.into_split();
                                     let conn_id_r = cid2.clone();
                                     let ctx_r = ctx.clone();
+                                    let sc_r = Arc::clone(&sc);
 
-                                    // 外部 -> 客户端
+                                    // 外部 -> 客户端 (recv from external = bytes_recv)
                                     let read_task = tokio::spawn(async move {
                                         let mut buf = [0u8; 8192];
                                         loop {
                                             match read_half.read(&mut buf).await {
                                                 Ok(0) => break,
                                                 Ok(n) => {
+                                                    sc_r.fetch_add(n as u64, Ordering::Relaxed);
                                                     if ctx_r.send(WsMessage::Data {
                                                         conn_id: conn_id_r.clone(),
                                                         data: buf[..n].to_vec(),
@@ -186,9 +217,11 @@ impl ServerState {
                                         }
                                     });
 
-                                    // 客户端 -> 外部
+                                    // 客户端 -> 外部 (sent to external = bytes_sent)
+                                    let rc_w = Arc::clone(&rc);
                                     let write_task = tokio::spawn(async move {
                                         while let Some(data) = data_rx.recv().await {
+                                            rc_w.fetch_add(data.len() as u64, Ordering::Relaxed);
                                             if write_half.write_all(&data).await.is_err() {
                                                 break;
                                             }
@@ -222,6 +255,8 @@ impl ServerState {
             TunnelState {
                 info: info.clone(),
                 shutdown: Some(shutdown_tx),
+                bytes_sent: sent_counter,
+                bytes_recv: recv_counter,
             },
         );
 
@@ -229,11 +264,11 @@ impl ServerState {
         Ok(info)
     }
 
-    async fn find_available_port(&self) -> Result<u16, String> {
+    async fn find_available_port(&self) -> Result<(TcpListener, u16), String> {
         for port in self.port_start..=self.port_end {
             if !self.is_port_used(port) {
-                if TcpListener::bind(format!("0.0.0.0:{}", port)).await.is_ok() {
-                    return Ok(port);
+                if let Ok(listener) = TcpListener::bind(format!("0.0.0.0:{}", port)).await {
+                    return Ok((listener, port));
                 }
             }
         }

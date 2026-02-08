@@ -39,6 +39,10 @@ pub struct TunnelInfo {
     pub local_port: u16,
     pub server_port: u16,
     pub state: String,
+    pub bytes_sent: u64,
+    pub bytes_recv: u64,
+    pub created_at: String,
+    pub last_active_at: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

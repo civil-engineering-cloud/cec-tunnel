@@ -133,6 +133,9 @@ pub async fn list_clients(State(state): State<ServerState>) -> impl IntoResponse
                 "name": c.info.name,
                 "hostname": c.info.hostname,
                 "os": c.info.os,
+                "arch": c.info.arch,
+                "version": c.info.version,
+                "local_ip": c.info.local_ip,
                 "tunnels": c.tunnel_ids.len()
             })
         })
@@ -146,13 +149,29 @@ pub async fn list_tunnels(State(state): State<ServerState>) -> impl IntoResponse
         .tunnels
         .iter()
         .map(|t| {
+            // 查找所属客户端名称
+            let client_name = state
+                .clients
+                .get(&t.info.client_id)
+                .map(|c| c.info.name.clone())
+                .unwrap_or_default();
+            // 从原子计数器读取实时流量
+            let bytes_sent = t.bytes_sent.load(std::sync::atomic::Ordering::Relaxed);
+            let bytes_recv = t.bytes_recv.load(std::sync::atomic::Ordering::Relaxed);
             json!({
                 "id": t.info.id,
                 "client_id": t.info.client_id,
+                "client_name": client_name,
                 "name": t.info.name,
-                "local": format!("{}:{}", t.info.local_addr, t.info.local_port),
+                "tunnel_type": t.info.tunnel_type,
+                "local_addr": t.info.local_addr,
+                "local_port": t.info.local_port,
                 "server_port": t.info.server_port,
-                "state": t.info.state
+                "state": t.info.state,
+                "bytes_sent": bytes_sent,
+                "bytes_recv": bytes_recv,
+                "created_at": t.info.created_at,
+                "last_active_at": t.info.last_active_at
             })
         })
         .collect();

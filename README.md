@@ -75,13 +75,13 @@ chmod +x cec-tunnel-server
 curl -fsSL https://raw.githubusercontent.com/civil-engineering-cloud/cec-tunnel/main/install.sh | bash
 
 # 连接并暴露 SSH
-cec-tunnel -s ws://your-server:8888/tunnel -n "office" -t tcp:22:10022
+cec-tunnel -s ws://your-server:8888/tunnel -n "office" -t tcp:22:10000
 ```
 
 ### 3. 访问内网服务
 
 ```bash
-ssh -p 10022 user@your-server
+ssh -p 10000 user@your-server
 ```
 
 ## 隧道配置格式
@@ -94,13 +94,13 @@ ssh -p 10022 user@your-server
 ### 示例
 
 ```bash
-# 暴露 SSH (22 -> 10022)
-cec-tunnel -s ws://server:8888/tunnel -t tcp:22:10022
+# 暴露 SSH (22 -> 10000)
+cec-tunnel -s ws://server:8888/tunnel -t tcp:22:10000
 
 # 暴露多个服务
 cec-tunnel -s ws://server:8888/tunnel \
            -n "dev-server" \
-           -t tcp:22:10022 \
+           -t tcp:22:10000 \
            -t tcp:3306:10306 \
            -t tcp:6379:10379
 ```
@@ -111,7 +111,7 @@ cec-tunnel -s ws://server:8888/tunnel \
 ┌─────────────────┐         ┌─────────────────┐         ┌─────────────────┐
 │   外部用户      │         │   CEC Tunnel    │         │   内网机器      │
 │                 │         │     Server      │         │                 │
-│  ssh -p 10022   │────────▶│  (公网:8888)    │◀────────│  cec-tunnel     │
+│  ssh -p 10000   │────────▶│  (公网:8888)    │◀────────│  cec-tunnel     │
 │  your-server    │         │                 │         │  (内网)         │
 └─────────────────┘         │   WebSocket     │─────────│                 │
                             └─────────────────┘         └─────────────────┘
