@@ -125,35 +125,49 @@ jobs:
           cd release && sha256sum * > checksums.txt
           cat checksums.txt
       
+      - name: Set version
+        id: version
+        run: echo "tag=${{ github.event.inputs.version || github.ref_name }}" >> "$GITHUB_OUTPUT"
+
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: ${{ github.event.inputs.version || github.ref_name }}
-          name: CEC Tunnel ${{ github.event.inputs.version || github.ref_name }}
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: CEC Tunnel ${{ steps.version.outputs.tag }}
           body: |
-            ## CEC Tunnel ${{ github.event.inputs.version || github.ref_name }}
+            ## CEC Tunnel ${{ steps.version.outputs.tag }}
             
             轻量级内网穿透工具，包含客户端和服务端。
             
-            ### 下载
+            ### 一键安装 (Linux / macOS)
+            
+            ```bash
+            # GitHub
+            curl -fsSL https://raw.githubusercontent.com/civil-engineering-cloud/cec-tunnel/main/install.sh | bash
+            
+            # 国内加速 (Gitee)
+            curl -fsSL https://gitee.com/civil-engineering-cloud/cec-tunnel/raw/main/install.sh | MIRROR=gitee bash
+            ```
+            
+            ### 手动下载
             
             #### 客户端 (cec-tunnel)
-            | 平台 | 架构 | 文件 |
+            | 平台 | 架构 | 下载 |
             |------|------|------|
-            | Linux | x86_64 | cec-tunnel-linux-amd64 |
-            | Linux | ARM64 | cec-tunnel-linux-arm64 |
-            | macOS | x86_64 | cec-tunnel-darwin-amd64 |
-            | macOS | ARM64 (M1/M2) | cec-tunnel-darwin-arm64 |
-            | Windows | x86_64 | cec-tunnel-windows-amd64.exe |
+            | Linux | x86_64 | [cec-tunnel-linux-amd64](https://github.com/civil-engineering-cloud/cec-tunnel/releases/download/${{ steps.version.outputs.tag }}/cec-tunnel-linux-amd64) |
+            | Linux | ARM64 | [cec-tunnel-linux-arm64](https://github.com/civil-engineering-cloud/cec-tunnel/releases/download/${{ steps.version.outputs.tag }}/cec-tunnel-linux-arm64) |
+            | macOS | x86_64 | [cec-tunnel-darwin-amd64](https://github.com/civil-engineering-cloud/cec-tunnel/releases/download/${{ steps.version.outputs.tag }}/cec-tunnel-darwin-amd64) |
+            | macOS | ARM64 (M1/M2) | [cec-tunnel-darwin-arm64](https://github.com/civil-engineering-cloud/cec-tunnel/releases/download/${{ steps.version.outputs.tag }}/cec-tunnel-darwin-arm64) |
+            | Windows | x86_64 | [cec-tunnel-windows-amd64.exe](https://github.com/civil-engineering-cloud/cec-tunnel/releases/download/${{ steps.version.outputs.tag }}/cec-tunnel-windows-amd64.exe) |
             
             #### 服务端 (cec-tunnel-server)
-            | 平台 | 架构 | 文件 |
+            | 平台 | 架构 | 下载 |
             |------|------|------|
-            | Linux | x86_64 | cec-tunnel-server-linux-amd64 |
-            | Linux | ARM64 | cec-tunnel-server-linux-arm64 |
-            | macOS | x86_64 | cec-tunnel-server-darwin-amd64 |
-            | macOS | ARM64 (M1/M2) | cec-tunnel-server-darwin-arm64 |
-            | Windows | x86_64 | cec-tunnel-server-windows-amd64.exe |
+            | Linux | x86_64 | [cec-tunnel-server-linux-amd64](https://github.com/civil-engineering-cloud/cec-tunnel/releases/download/${{ steps.version.outputs.tag }}/cec-tunnel-server-linux-amd64) |
+            | Linux | ARM64 | [cec-tunnel-server-linux-arm64](https://github.com/civil-engineering-cloud/cec-tunnel/releases/download/${{ steps.version.outputs.tag }}/cec-tunnel-server-linux-arm64) |
+            | macOS | x86_64 | [cec-tunnel-server-darwin-amd64](https://github.com/civil-engineering-cloud/cec-tunnel/releases/download/${{ steps.version.outputs.tag }}/cec-tunnel-server-darwin-amd64) |
+            | macOS | ARM64 (M1/M2) | [cec-tunnel-server-darwin-arm64](https://github.com/civil-engineering-cloud/cec-tunnel/releases/download/${{ steps.version.outputs.tag }}/cec-tunnel-server-darwin-arm64) |
+            | Windows | x86_64 | [cec-tunnel-server-windows-amd64.exe](https://github.com/civil-engineering-cloud/cec-tunnel/releases/download/${{ steps.version.outputs.tag }}/cec-tunnel-server-windows-amd64.exe) |
             
             ### 快速开始
             
@@ -163,9 +177,6 @@ jobs:
             
             # 客户端 (内网机器)
             ./cec-tunnel-linux-amd64 -s ws://your-server:8880/tunnel -n "my-server" -t tcp:22:10022
-            
-            # 访问内网服务
-            ssh -p 10022 user@your-server
             ```
           files: release/*
           draft: false

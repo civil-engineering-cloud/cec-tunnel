@@ -16,48 +16,66 @@
 - 📦 单文件，无依赖
 - 🖥️ 跨平台支持
 
-## 下载
+## 安装
 
-从 Releases 下载：
+### 一键安装 (Linux / macOS)
+
+```bash
+# GitHub
+curl -fsSL https://raw.githubusercontent.com/civil-engineering-cloud/cec-tunnel/main/install.sh | bash
+
+# 国内加速 (Gitee)
+curl -fsSL https://gitee.com/civil-engineering-cloud/cec-tunnel/raw/main/install.sh | MIRROR=gitee bash
+```
+
+### 手动下载
+
+从 Releases 页面下载对应平台的二进制文件，每个文件都有独立下载链接：
 
 - GitHub: https://github.com/civil-engineering-cloud/cec-tunnel/releases
 - Gitee: https://gitee.com/civil-engineering-cloud/cec-tunnel/releases
 
-| 组件 | 平台 | 文件 |
+#### 客户端 (cec-tunnel)
+
+| 平台 | 架构 | 文件 |
 |------|------|------|
-| 客户端 | Linux x64 | cec-tunnel-linux-amd64 |
-| 客户端 | Linux ARM64 | cec-tunnel-linux-arm64 |
-| 客户端 | macOS x64 | cec-tunnel-darwin-amd64 |
-| 客户端 | macOS ARM64 | cec-tunnel-darwin-arm64 |
-| 客户端 | Windows | cec-tunnel-windows-amd64.exe |
-| 服务端 | Linux x64 | cec-tunnel-server-linux-amd64 |
-| 服务端 | Linux ARM64 | cec-tunnel-server-linux-arm64 |
-| 服务端 | macOS x64 | cec-tunnel-server-darwin-amd64 |
-| 服务端 | macOS ARM64 | cec-tunnel-server-darwin-arm64 |
-| 服务端 | Windows | cec-tunnel-server-windows-amd64.exe |
+| Linux | x86_64 | `cec-tunnel-linux-amd64` |
+| Linux | ARM64 | `cec-tunnel-linux-arm64` |
+| macOS | x86_64 | `cec-tunnel-darwin-amd64` |
+| macOS | ARM64 (M1/M2) | `cec-tunnel-darwin-arm64` |
+| Windows | x86_64 | `cec-tunnel-windows-amd64.exe` |
+
+#### 服务端 (cec-tunnel-server)
+
+| 平台 | 架构 | 文件 |
+|------|------|------|
+| Linux | x86_64 | `cec-tunnel-server-linux-amd64` |
+| Linux | ARM64 | `cec-tunnel-server-linux-arm64` |
+| macOS | x86_64 | `cec-tunnel-server-darwin-amd64` |
+| macOS | ARM64 (M1/M2) | `cec-tunnel-server-darwin-arm64` |
+| Windows | x86_64 | `cec-tunnel-server-windows-amd64.exe` |
 
 ## 快速开始
-
-### Docker 部署
-
-```bash
-docker compose -f docker-compose.dev.yml up -d
-```
-
-### 访问地址
-
-- 统一入口: http://localhost:8370
 
 ### 1. 部署服务端 (公网服务器)
 
 ```bash
-./cec-tunnel-server-linux-amd64 -p 8370
+# 下载
+curl -fsSL https://github.com/civil-engineering-cloud/cec-tunnel/releases/latest/download/cec-tunnel-server-linux-amd64 -o cec-tunnel-server
+chmod +x cec-tunnel-server
+
+# 启动
+./cec-tunnel-server -p 8370
 ```
 
 ### 2. 运行客户端 (内网机器)
 
 ```bash
-./cec-tunnel-linux-amd64 -s ws://your-server:8370/tunnel -n "office" -t tcp:22:10022
+# 一键安装
+curl -fsSL https://raw.githubusercontent.com/civil-engineering-cloud/cec-tunnel/main/install.sh | bash
+
+# 连接并暴露 SSH
+cec-tunnel -s ws://your-server:8370/tunnel -n "office" -t tcp:22:10022
 ```
 
 ### 3. 访问内网服务
