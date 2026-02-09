@@ -74,6 +74,18 @@ pub enum WsMessage {
     CloseConnection {
         conn_id: String,
     },
+    /// 服务端动态下发隧道（服务端 → 客户端）
+    AddTunnel {
+        request_id: String,
+        tunnel: TunnelConfig,
+    },
+    /// 客户端确认隧道已就绪（客户端 → 服务端）
+    AddTunnelResponse {
+        request_id: String,
+        success: bool,
+        tunnel: Option<TunnelInfo>,
+        message: Option<String>,
+    },
     Ping {
         timestamp: i64,
     },

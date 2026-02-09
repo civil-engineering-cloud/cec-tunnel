@@ -9,7 +9,7 @@ mod manager;
 mod common;
 
 use anyhow::Result;
-use axum::{routing::{get, delete}, Router};
+use axum::{routing::{get, delete, post}, Router};
 use clap::Parser;
 use std::net::SocketAddr;
 use tower_http::cors::CorsLayer;
@@ -24,7 +24,7 @@ struct Args {
     bind: String,
 
     /// WebSocket 端口
-    #[arg(short, long, default_value = "8888")]
+    #[arg(short, long, default_value = "9999")]
     port: u16,
 
     /// 隧道端口范围起始
@@ -65,10 +65,13 @@ async fn main() -> Result<()> {
     let app = Router::new()
         .route("/", get(|| async { "CEC Tunnel Server" }))
         .route("/health", get(|| async { "OK" }))
+        .route("/status", get(handler::get_status))
         .route("/tunnel", get(handler::ws_handler))
         .route("/api/clients", get(handler::list_clients))
+        .route("/api/clients/:id", delete(handler::disconnect_client))
         .route("/api/tunnels", get(handler::list_tunnels))
         .route("/api/tunnels/:id", delete(handler::close_tunnel))
+        .route("/api/clients/:id/tunnels", post(handler::add_client_tunnel))
         .layer(CorsLayer::permissive())
         .with_state(state);
 

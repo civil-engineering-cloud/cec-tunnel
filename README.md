@@ -64,8 +64,8 @@ curl -fsSL https://gitee.com/civil-engineering-cloud/cec-tunnel/raw/main/install
 curl -fsSL https://github.com/civil-engineering-cloud/cec-tunnel/releases/latest/download/cec-tunnel-server-linux-amd64 -o cec-tunnel-server
 chmod +x cec-tunnel-server
 
-# 启动 (默认端口 8888)
-./cec-tunnel-server
+# 启动 (默认端口 9999)
+./cec-tunnel-server -p 9999
 ```
 
 ### 2. 运行客户端 (内网机器)
@@ -75,7 +75,7 @@ chmod +x cec-tunnel-server
 curl -fsSL https://raw.githubusercontent.com/civil-engineering-cloud/cec-tunnel/main/install.sh | bash
 
 # 连接并暴露 SSH
-cec-tunnel -s ws://your-server:8888/tunnel -n "office" -t tcp:22:10000
+cec-tunnel -s ws://your-server:9999/tunnel -n "office" -t tcp:22:10000
 ```
 
 ### 3. 访问内网服务
@@ -95,10 +95,10 @@ ssh -p 10000 user@your-server
 
 ```bash
 # 暴露 SSH (22 -> 10000)
-cec-tunnel -s ws://server:8888/tunnel -t tcp:22:10000
+cec-tunnel -s ws://server:9999/tunnel -t tcp:22:10000
 
 # 暴露多个服务
-cec-tunnel -s ws://server:8888/tunnel \
+cec-tunnel -s ws://server:9999/tunnel \
            -n "dev-server" \
            -t tcp:22:10000 \
            -t tcp:3306:10306 \
@@ -111,7 +111,7 @@ cec-tunnel -s ws://server:8888/tunnel \
 ┌─────────────────┐         ┌─────────────────┐         ┌─────────────────┐
 │   外部用户      │         │   CEC Tunnel    │         │   内网机器      │
 │                 │         │     Server      │         │                 │
-│  ssh -p 10000   │────────▶│  (公网:8888)    │◀────────│  cec-tunnel     │
+│  ssh -p 10000   │────────▶│  (公网:9999)    │◀────────│  cec-tunnel     │
 │  your-server    │         │                 │         │  (内网)         │
 └─────────────────┘         │   WebSocket     │─────────│                 │
                             └─────────────────┘         └─────────────────┘
@@ -120,9 +120,9 @@ cec-tunnel -s ws://server:8888/tunnel \
 ## API 接口
 
 ```bash
-curl -m 5 http://server:8888/health          # 健康检查
-curl -m 5 http://server:8888/api/clients      # 已连接客户端
-curl -m 5 http://server:8888/api/tunnels      # 所有隧道
+curl -m 5 http://server:9999/health          # 健康检查
+curl -m 5 http://server:9999/api/clients      # 已连接客户端
+curl -m 5 http://server:9999/api/tunnels      # 所有隧道
 ```
 
 ## 许可证

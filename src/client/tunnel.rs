@@ -184,6 +184,49 @@ impl TunnelClient {
                         WsMessage::Error { code, message } => {
                             error!("服务器错误 {}: {}", code, message);
                         }
+                        WsMessage::AddTunnel { request_id, tunnel: config } => {
+                            info!(
+                                "服务端下发隧道: {}:{} -> 服务端端口 {:?}",
+                                config.local_addr, config.local_port, config.remote_port
+                            );
+                            // 服务端已创建隧道，客户端只需记录本地映射
+                            let tunnel_info = TunnelInfo {
+                                id: request_id.clone(),
+                                client_id: String::new(),
+                                tunnel_type: config.tunnel_type.clone(),
+                                name: config.name.clone().unwrap_or_default(),
+                                local_addr: config.local_addr.clone(),
+                                local_port: config.local_port,
+                                server_port: config.remote_port.unwrap_or(0),
+                                state: "active".to_string(),
+                                bytes_sent: 0,
+                                bytes_recv: 0,
+                                created_at: String::new(),
+                                last_active_at: String::new(),
+                            };
+                            let mut t = self.tunnels.write().await;
+                            t.insert(tunnel_info.id.clone(), tunnel_info.clone());
+                            info!(
+                                "隧道已记录: {} -> {}:{} (服务端端口: {})",
+                                tunnel_info.name, tunnel_info.local_addr,
+                                tunnel_info.local_port, tunnel_info.server_port
+                            );
+                        }
+                        WsMessage::AddTunnelResponse { request_id, success, tunnel, .. } => {
+                            // 服务端确认隧道已创建，更新本地 tunnel 映射
+                            if success {
+                                if let Some(info) = tunnel {
+                                    info!(
+                                        "隧道已分配: {} -> {}:{} (服务端端口: {})",
+                                        info.name, info.local_addr, info.local_port, info.server_port
+                                    );
+                                    let mut t = self.tunnels.write().await;
+                                    t.insert(info.id.clone(), info);
+                                }
+                            } else {
+                                warn!("隧道分配失败: request_id={}", request_id);
+                            }
+                        }
                         _ => {}
                     }
                 }

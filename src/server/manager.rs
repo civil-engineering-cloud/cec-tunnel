@@ -315,6 +315,29 @@ impl ServerState {
         Ok(())
     }
 
+    /// 给已连接的客户端动态添加隧道
+    pub async fn add_tunnel_to_client(
+        &self,
+        client_id: &str,
+        config: TunnelConfig,
+        client_tx: mpsc::UnboundedSender<WsMessage>,
+    ) -> Result<TunnelInfo, String> {
+        // 确认客户端存在
+        if !self.clients.contains_key(client_id) {
+            return Err("客户端不存在".to_string());
+        }
+
+        // 创建隧道
+        let info = self.create_tunnel(client_id, config, client_tx).await?;
+
+        // 把 tunnel_id 加到客户端的 tunnel_ids
+        if let Some(mut client) = self.clients.get_mut(client_id) {
+            client.tunnel_ids.push(info.id.clone());
+        }
+
+        Ok(info)
+    }
+
     pub fn remove_client(&self, client_id: &str) {
         if let Some((_, client)) = self.clients.remove(client_id) {
             for tunnel_id in client.tunnel_ids {
