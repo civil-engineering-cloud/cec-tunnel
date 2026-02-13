@@ -62,7 +62,7 @@ struct Args {
 #[tokio::main]
 async fn main() -> Result<()> {
     // rustls 0.23+ 需要显式安装 CryptoProvider
-    rustls::crypto::aws_lc_rs::default_provider()
+    rustls::crypto::ring::default_provider()
         .install_default()
         .expect("Failed to install rustls CryptoProvider");
 

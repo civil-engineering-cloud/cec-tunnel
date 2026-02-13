@@ -19,10 +19,10 @@ jobs:
     strategy:
       matrix:
         include:
-          - os: ubuntu-latest
+          - os: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
             suffix: linux-amd64
-          - os: ubuntu-latest
+          - os: ubuntu-22.04
             target: aarch64-unknown-linux-gnu
             suffix: linux-arm64
           - os: macos-latest
@@ -154,7 +154,7 @@ jobs:
             ./cec-tunnel-server-linux-amd64 -p 8880
             
             # 客户端 (内网机器)
-            ./cec-tunnel-linux-amd64 -s ws://your-server:8880/tunnel -n "my-server" -t tcp:22:10022
+            ./cec-tunnel-linux-amd64 -s ws://your-server:8880
             ```
           files: release/*
           draft: false

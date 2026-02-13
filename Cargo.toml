@@ -1,6 +1,6 @@
 [package]
 name = "cec-tunnel"
-version = "0.2.4"
+version = "0.2.5"
 edition = "2021"
 description = "CEC Tunnel - 轻量级内网穿透工具 (客户端 + 服务端)"
 license = "MIT"
@@ -34,7 +34,7 @@ uuid = { version = "1", features = ["v4"] }
 dashmap = "6"
 axum = { version = "0.7", default-features = false, features = ["ws", "tokio", "http1", "json"] }
 axum-server = { version = "0.7", features = ["tls-rustls"] }
-rustls = { version = "0.23", default-features = false, features = ["aws_lc_rs"] }
+rustls = { version = "0.23", default-features = false, features = ["ring"] }
 tower-http = { version = "0.5", features = ["cors", "trace"] }
 
 [profile.release]
